@@ -6,5 +6,6 @@ Use below packages:
 
 * [tclopenal](https://github.com/ray2501/tclopenal)
 * [tclmpg123](https://github.com/ray2501/tclmpg123)
+* [tclopusfile](https://github.com/ray2501/tclopusfile)
 * [tclsndfile](https://github.com/ray2501/tclsndfile)
 * [tcltaglib](https://github.com/ray2501/tcltaglib)

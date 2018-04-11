@@ -4,6 +4,7 @@
 #
 
 package require sndfile
+package require opusfile
 package require mpg123
 package require openal
 package require tcltaglib
@@ -12,7 +13,7 @@ set bits 16
 set channels 2
 set samplerate 44100
 set alformat AL_FORMAT_STEREO16
-set isMp3 1
+set isMp3 2
 
 if {$argc == 1} {
     set name [lindex $argv 0]
@@ -55,40 +56,58 @@ if {[taglib::file_is_valid $filehandle] != 0} {
 
 # Check file extension
 if {[string compare [string tolower [file extension $name]] ".mp3"] != 0} {
-    if {[catch {set data [sndfile snd0 $name READ]}]} {
-        puts "Read file failed."
-        exit
-    } else {
-        set isMp3 0
-        set encoding [dict get $data encoding]
-    
-        switch $encoding {
-            {pcm_16} {
-                    set bits 16
-                }
-                {pcm_24} {
-                    set bits 24
-                }
-                {pcm_32} {
-                    set bits 32
-                }
-                {pcm_s8} {
-                    set bits 8
-                }
-                {pcm_u8} {
-                    set bits 8
-                }
-                default {
-                    set bits 16
-                }
+    if {[string compare [string tolower [file extension $name]] ".opus"] != 0} {
+        if {[catch {set data [sndfile snd0 $name READ]}]} {
+            puts "Read file failed."
+            exit
+        } else {
+            set isMp3 0
+            set encoding [dict get $data encoding]
+
+            switch $encoding {
+                {pcm_16} {
+                        set bits 16
+                    }
+                    {pcm_24} {
+                        set bits 24
+                    }
+                    {pcm_32} {
+                        set bits 32
+                    }
+                    {pcm_s8} {
+                        set bits 8
+                    }
+                    {pcm_u8} {
+                        set bits 8
+                    }
+                    default {
+                        set bits 16
+                    }
+            }
+
+            set channels [dict get $data channels]
+            set samplerate [dict get $data samplerate]
+            set size [expr [dict get $data frames] * $channels * $bits / 8]
+            set buffersize [expr $samplerate * $bits / 8]
+            snd0 buffersize $buffersize
+            set buffer_number [expr $size / $buffersize + 1]
         }
-    
-        set channels [dict get $data channels]
-        set samplerate [dict get $data samplerate]
-        set size [expr [dict get $data frames] * $channels * $bits / 8]
-        set buffersize [expr $samplerate * $bits / 8]
-        snd0 buffersize $buffersize
-        set buffer_number [expr $size / $buffersize + 1]
+    } else {
+        if {[catch {set data [opusfile opus0 $name]}]} {
+            puts "Read file failed."
+            exit
+        } else {
+            set isMp3 1
+            set bits [dict get $data bits]
+            set channels [dict get $data channels]
+            set samplerate [dict get $data samplerate]
+            set size [expr [dict get $data length] * $samplerate * $channels * $bits / 8]
+            set buffersize [expr $samplerate * $bits / 8]
+            opus0 buffersize $buffersize
+
+            # FIXME: opusfile read 960 samples per channel (almost)... not sure
+            set buffer_number [expr ($size / (960 * $channels)) + 1]
+        }
     }
 } else {
         if {[catch {set data [mpg123 mpg0 $name]}]} {
@@ -134,8 +153,14 @@ if {$channels > 1} {
 dev0 createBuffer $buffer_number
 set buffer_index 0
 while {$buffer_index < $buffer_number} {
-    if {$isMp3==1} {
+    if {$isMp3==2} {
          if {[catch {set buffer [mpg0 read]}] == 0} {
+             dev0 bufferData $alformat $buffer $samplerate $buffer_index
+         } else {
+             break
+         }
+    } elseif {$isMp3==1} {
+         if {[catch {set buffer [opus0 read]}] == 0} {
              dev0 bufferData $alformat $buffer $samplerate $buffer_index
          } else {
              break
@@ -173,8 +198,10 @@ dev0 destroySource
 dev0 destroyBuffer
 dev0 close
 
-if {$isMp3==1} {
+if {$isMp3==2} {
     mpg0 close
+} elseif {$isMp3==1} {
+    opus0 close
 } else {
     snd0 close
 } 
